@@ -5,13 +5,18 @@
  */
 package sample.chat.client;
 
+import java.awt.Point;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.Socket;
+import java.util.ArrayList;
+import javax.swing.JTable;
 import javax.swing.table.DefaultTableModel;
 
 /**
@@ -20,7 +25,7 @@ import javax.swing.table.DefaultTableModel;
  */
 public class ClientForm extends javax.swing.JFrame {
 
-    private static final String IPADDRESS = "127.0.0.1";
+    private static final String IPADDRESS = "172.104.91.153";
     private static final int PORT = 6969;
 
     private String LOGIN = "client1";
@@ -30,17 +35,59 @@ public class ClientForm extends javax.swing.JFrame {
     private BufferedWriter writer = null;
     private BufferedReader reader = null;
 
+    private ArrayList<PrivateMessageForm> pmFormList;
+
     /**
      * Creates new form ClientForm
      */
     public ClientForm() {
         initComponents();
+        pmFormList = new ArrayList<>();
+        tbl_userList.addMouseListener(userListTableMouseAdapter);
+
         new Thread(new Runnable() {
             @Override
             public void run() {
                 connect();
             }
         }).start();
+    }
+
+    public MouseAdapter userListTableMouseAdapter = new MouseAdapter() {
+        @Override
+        public void mousePressed(MouseEvent e) {
+            JTable table = (JTable) e.getSource();
+            Point p = e.getPoint();
+            int row = table.rowAtPoint(p);
+            if (e.getClickCount() == 2) {
+                DefaultTableModel tm = (DefaultTableModel) tbl_userList.getModel();
+                String user = tm.getValueAt(row, 0).toString();
+                if (!pmFormList.isEmpty()) {
+                    for (PrivateMessageForm pmf : pmFormList) {
+                        if (!pmf.getPMUser().equals(user)) {
+                            showNewPMForm(user);
+                            break;
+                        }
+                    }
+                } else {
+                    showNewPMForm(user);
+                }
+            }
+        }
+    };
+
+    private void showNewPMForm(String user) {
+        PrivateMessageForm pmf = new PrivateMessageForm(ClientForm.this, user);
+        pmFormList.add(pmf);
+        pmf.setVisible(true);
+    }
+
+    public boolean removePrivateMessageWindow(PrivateMessageForm pmf) {
+        boolean isRemoved = false;
+        pmf.dispose();
+        isRemoved = pmFormList.remove(pmf);
+        System.out.println("PMFormList: " + pmFormList.size());
+        return isRemoved;
     }
 
     private void connect() {
@@ -56,7 +103,6 @@ public class ClientForm extends javax.swing.JFrame {
 
                 String line = null;
                 while ((line = reader.readLine()) != null) {
-                    writeToTextArea(line + "\n");
                     if (line.toLowerCase().startsWith("server: connected:")) {
                         // msg[0] = server | msg[1] = connected | msg[0] = username
                         String[] msg = line.split("\\:");
@@ -74,6 +120,15 @@ public class ClientForm extends javax.swing.JFrame {
                                 addUserToTable(user);
                             }
                         }
+                    } else if (line.toLowerCase().startsWith("pm:")) {
+                        String[] msg = line.split("\\:");
+                        for (PrivateMessageForm pmf : pmFormList) {
+                            if (pmf.getPMUser().equals(msg[1])) {
+                                pmf.writeToTextArea(line.toLowerCase().replace("pm:", "") + "\n");
+                            }
+                        }
+                    } else {
+                        writeToTextArea(line + "\n");
                     }
                 }
                 System.exit(0);
